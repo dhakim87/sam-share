@@ -5,6 +5,7 @@ import sys
 
 if len(sys.argv) < 4:
     print("Usage: " + sys.argv[0] + " <in folder> <out folder> <executable>")
+    exit(-1)
 
 print("In Folder: " + sys.argv[1])
 print("Out Folder: " + sys.argv[2])
