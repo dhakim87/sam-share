@@ -313,7 +313,7 @@ def main(fnames):
     ind = min(200, len(yersinia_counts))
     yersinia_share_thresh = yersinia_counts[ind]
 
-    yersinia_shared = set([])
+    yersinia_shared = set([]) 
     for key in gotu_data.gotu_to_shared:
         if key[0] in yersinia_gotus or key[1] in yersinia_gotus:
             if gotu_data.gotu_to_shared[key] >= yersinia_share_thresh:
