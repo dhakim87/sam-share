@@ -24,11 +24,16 @@ def build_priv_mat(gotus, counts_map):
     return mat
 
 
-def build_shared_mat(gotus, counts_map):
+def build_shared_mat(gotus, counts_map, gotus_x=None, gotus_y=None):
     mat_all = []
-    for gotu1 in gotus:
+    if gotus_x is None:
+        gotus_x = gotus
+    if gotus_y is None:
+        gotus_y = gotus
+
+    for gotu1 in gotus_y:
         row = []
-        for gotu2 in gotus:
+        for gotu2 in gotus_x:
             count = 0
             if (gotu1, gotu2) in counts_map:
                 count = counts_map[(gotu1, gotu2)]
@@ -51,7 +56,7 @@ class GOTUData:
         self.gotu_to_coverage = gotu_to_coverage
 
 
-def plot(gotu_data, title, gotus, names=None):
+def plot(gotu_data, title, gotus, names=None, **kwargs):
     mat_akk_priv = build_priv_mat(gotus, gotu_data.gotu_to_priv)
     mat_akk_split = build_priv_mat(gotus, gotu_data.gotu_to_split)
     mat_akk_cover = build_priv_mat(gotus, gotu_data.gotu_to_coverage)
@@ -67,28 +72,29 @@ def plot(gotu_data, title, gotus, names=None):
     plt.subplots(1, numplots, gridspec_kw={'width_ratios': [8] + [1] * (numplots-1)})
     plt.subplot(1, numplots, 2)
     plt.xticks([])
-    plt.imshow(mat_akk_priv, cmap='hot', interpolation='nearest')
+    plt.imshow(mat_akk_priv, cmap='hot', interpolation='nearest', **kwargs)
     plt.title("Private Reads")
 
     plt.colorbar()
     plt.subplot(1, numplots, 3)
     plt.xticks([])
-    plt.imshow(mat_akk_split, cmap='hot', interpolation='nearest')
+    plt.imshow(mat_akk_split, cmap='hot', interpolation='nearest', **kwargs)
     plt.title("Split Reads")
 
     if mat_akk_cover is not None:
         plt.colorbar()
         plt.subplot(1, numplots, 4)
         plt.xticks([])
-        plt.imshow(mat_akk_cover, cmap='hot', interpolation='nearest')
+        plt.imshow(mat_akk_cover, cmap='hot', interpolation='nearest', vmin=0, vmax=1)
         plt.title("Coverage")
 
     plt.colorbar()
     plt.subplot(1, numplots, 1)
-    plt.imshow(mat_akk, cmap='hot', interpolation='nearest')
+    plt.imshow(mat_akk, cmap='hot', interpolation='nearest', **kwargs)
+    # plt.spy(mat_akk, precision=1, markersize=4)
     if names is not None:
         plt.yticks(range(len(names)), names)
-    plt.title("Confusion Matrix")
+    plt.title("Share Matrix")
     plt.colorbar()
     plt.suptitle(title)
     plt.show()
@@ -189,13 +195,31 @@ def main(fnames):
     gotu_to_coverage = load_gotu_to_coverage()
     i = 0
 
+    file_stats = []
     gotu_data = GOTUData()
     for fname in fnames:
         i += 1
         if i % 10 == 0:
             print(i)
         gotu_data_from_file = load_gotu_data(fname)
+
+        total_priv = sum(gotu_data_from_file.gotu_to_priv.values())
+        total_split = sum(gotu_data_from_file.gotu_to_split.values())
+        total_reads = total_priv + total_split
+        if total_reads == 0:
+            print(fname, "has no reads?")
+            continue
+        percent_split = (total_split / (total_priv + total_split)) * 100
+        file_stats.append((total_priv, total_split, total_reads, percent_split))
         gotu_data = merge_gotu_data([gotu_data_from_file], accumulator=gotu_data)
+
+    if len(fnames) > 1:
+        pct_split = [x[3] for x in file_stats]
+        plt.hist(pct_split)
+        plt.title("Read Split Histogram")
+        plt.xlabel("Percent Split Reads")
+        plt.ylabel("# .sam files")
+        plt.show()
 
     print("Data Loaded!")
 
@@ -203,16 +227,55 @@ def main(fnames):
         print("Writing merged file to merged.outsam")
         write_gotu_data(gotu_data, "merged.outsam")
 
-    gotu_data.set_coverage(gotu_to_coverage)
+    total_priv = sum(gotu_data.gotu_to_priv.values())
+    total_split = sum(gotu_data.gotu_to_split.values())
+    print("Total Private Reads", total_priv)
+    print("Total Split Reads", total_split)
+    print("Total Reads", total_priv + total_split)
+    print("Percent Reads Split: ", total_split / (total_priv + total_split))
+
+    # gotu_data.set_coverage(gotu_to_coverage)
 
     all_gotus = sorted(list(gotu_data.all_gotus_set), key=lambda x: gotu_to_species[x])
+    gotu_names = [gotu_to_species[x] for x in all_gotus]
+    for i in range(len(gotu_names)):
+        print(i, gotu_names[i])
     mat_all = build_shared_mat(all_gotus, gotu_data.gotu_to_shared)
 
-    for precision in [100, 1000, 10000, 100000, 1000000, 10000000, 100000000]:
-        plt.spy(mat_all, precision=precision, markersize=4)
-        # plt.colorbar()
-        plt.title("Confused > " + str(precision))
-        plt.show()
+    # for precision in [100, 1000, 10000, 100000, 1000000, 10000000, 100000000]:
+    #     plt.spy(mat_all, precision=precision, markersize=4)
+    #     # plt.colorbar()
+    #     plt.title("Share Matrix Val > " + str(precision))
+    #     plt.show()
+
+    range_min = 850
+    range_max = 855
+    precision = 100000
+    mat_all = build_shared_mat(all_gotus, gotu_data.gotu_to_shared, gotus_y=all_gotus[range_min:range_max])
+    plt.spy(mat_all, precision=precision, markersize=4, aspect='auto')
+    plt.yticks(range(len(gotu_names[range_min:range_max])), gotu_names[range_min:range_max])
+    print(mat_all.shape)
+    active_genus = ""
+    offset_index = 0
+    for r in range(3,4):
+        for c in range(mat_all.shape[1]):
+            if mat_all[r,c] > precision:
+                gname = gotu_names[c]
+                if gname.split()[0] != active_genus:
+                    plt.annotate(gotu_names[c],
+                        xy=(c,r), xycoords='data',
+                        xytext=(0, [72, 60, 48, 36, 24, 12][offset_index]), textcoords='offset points',
+                        arrowprops=dict(arrowstyle="-", relpos=(0, 0)),
+                        horizontalalignment='left',
+                        verticalalignment='bottom',
+                    )
+                    active_genus = gname.split()[0]
+                    offset_index = (offset_index + 1) % 6
+
+    plt.subplots_adjust(left=0.2, right=0.9, top=0.9, bottom=0.1)
+    plt.title("Share Matrix Val > " + str(precision))
+
+    plt.show()
 
     conn = sqlite3.connect("mimics.db")
     c = conn.cursor()
@@ -302,7 +365,8 @@ def main(fnames):
     plot(gotu_data, fname + "-Most Confused By Split Count", [x[2] for x in most_confused], names=names)
 
     # Show things that get confused with Yersinia Pestis
-    yersinia = [x for x in gotu_ratios if x[0] == "Yersinia pestis"]
+    # yersinia = [x for x in gotu_ratios if x[0] == "Yersinia pestis"]
+    yersinia = [x for x in gotu_ratios if x[0] == "Staphylococcus aureus"]
     yersinia_gotus = set([y[2] for y in yersinia])
     yersinia_counts = []
     for key in gotu_data.gotu_to_shared:
@@ -310,10 +374,10 @@ def main(fnames):
             yersinia_counts.append(gotu_data.gotu_to_shared[key])
 
     yersinia_counts.sort(reverse=True)
-    ind = min(200, len(yersinia_counts))
+    ind = min(50, len(yersinia_counts))
     yersinia_share_thresh = yersinia_counts[ind]
 
-    yersinia_shared = set([]) 
+    yersinia_shared = set([])
     for key in gotu_data.gotu_to_shared:
         if key[0] in yersinia_gotus or key[1] in yersinia_gotus:
             if gotu_data.gotu_to_shared[key] >= yersinia_share_thresh:
@@ -326,9 +390,12 @@ def main(fnames):
     names = []
     for i in range(len(most_confused)):
         names.append(most_confused[i][0] + ": " + str(i))
-    plot(gotu_data, "Confused With Yersinia pestis", [x[2] for x in most_confused], names=names)
+    # plot(gotu_data, "Confused With Yersinia pestis", [x[2] for x in most_confused], names=names, vmin=0, vmax=50000)
+    plot(gotu_data, "Confused With Staphylococcus aureus", [x[2] for x in most_confused], names=names, vmin=0, vmax=50000)
 
 
 if __name__ == "__main__":
     main(glob.glob("./imsms_all.outsam"))
+    # main(glob.glob("./187samples_qiita11919.outsam"))
     # main(glob.glob("./outsams/*.outsam"))
+    # main(glob.glob("./outsams_staph_aureus/*.outsam"))
