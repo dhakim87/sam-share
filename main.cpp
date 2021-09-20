@@ -54,8 +54,6 @@ int main(int argc, char** argv)
       exit(-1);
     }
 
-    batch.push_back(samline);
-
     // int read_len;
     // int reference_len;
     // parse_cigar(samline.cigar, read_len, reference_len);
@@ -67,6 +65,8 @@ int main(int argc, char** argv)
 
     if (last_qname != samline.qname)
       batch_process(batch);
+
+    batch.push_back(samline);
 
     last_qname = samline.qname;
   }
