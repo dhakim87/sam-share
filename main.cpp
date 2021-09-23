@@ -20,9 +20,33 @@ static std::map<std::string, int> private_reads;
 static std::map<std::string, float> split_reads;  //This could easily use fixed point, eh.
 static std::map<std::string, std::map<std::string, float> > shared2_reads;
 
+static std::map<std::string, std::map<std::string, std::vector<IndexRange> > > shared2_row_coverage;
+static std::map<std::string, std::map<std::string, std::vector<IndexRange> > > shared2_col_coverage;
+
+static std::vector<std::string> akkermansia_muciniphila_list;
+static std::unordered_set<std::string> akkermansia_muciniphila;
+
+static void init_akkermansia_lists()
+{
+    // akkermansia_muciniphila_list.push_back("G001683795");
+    // akkermansia_muciniphila_list.push_back("G900097105");
+    akkermansia_muciniphila_list.push_back("G000020225");
+    akkermansia_muciniphila_list.push_back("G000723745");
+    akkermansia_muciniphila_list.push_back("G000436395");
+    akkermansia_muciniphila_list.push_back("G001917295");
+    // akkermansia_muciniphila_list.push_back("G000437075");
+    // akkermansia_muciniphila_list.push_back("G001647615");
+    // akkermansia_muciniphila_list.push_back("G001578645");
+    // akkermansia_muciniphila_list.push_back("G001580195");
+    akkermansia_muciniphila_list.push_back("G001940945");
+    akkermansia_muciniphila_list.push_back("G000980515");
+    for (int i = 0; i < akkermansia_muciniphila_list.size(); i++)
+        akkermansia_muciniphila.insert(akkermansia_muciniphila_list[i]);
+}
 
 int main(int argc, char** argv)
 {
+  init_akkermansia_lists();
   std::vector<SAMLine> batch;
   std::string last_qname;
   std::string line;
@@ -54,14 +78,12 @@ int main(int argc, char** argv)
       exit(-1);
     }
 
-    // int read_len;
-    // int reference_len;
-    // parse_cigar(samline.cigar, read_len, reference_len);
+    int read_len;
+    int reference_len;
+    parse_cigar(samline.cigar, read_len, reference_len);
 
-    // pos is 1 based index into the genome
-    // for an inclusive 1 based start and end range in the reference, use:
-    // start = pos
-    // end = pos + reference_len - 1;
+    samline.reference_cover.start = samline.pos;
+    samline.reference_cover.end = samline.pos + reference_len - 1;
 
     if (last_qname != samline.qname)
       batch_process(batch);
@@ -99,6 +121,27 @@ int main(int argc, char** argv)
       std::cout << rname1 << ',' << rname2 << ',' << count << std::endl;
     }
   }
+
+  std::cout << "---" << std::endl;
+  for (std::map<std::string, std::map<std::string, std::vector<IndexRange> > >::iterator shared2_it = shared2_row_coverage.begin(); shared2_it != shared2_row_coverage.end(); shared2_it++)
+  {
+    const std::string& rname1 = shared2_it->first;
+    for (std::map<std::string, std::vector<IndexRange> >::iterator shared2_it2 = shared2_it->second.begin(); shared2_it2 != shared2_it->second.end(); shared2_it2++)
+    {
+      const std::string& rname2 = shared2_it2->first;
+      std::vector<IndexRange>& row_reads = shared2_it2->second;
+
+      std::vector<IndexRange> compressed = compress_ranges(row_reads);
+
+      std::cout << rname1 << ',' << rname2 << compressed.size() / 2 << std::endl;
+      for (int i = 0; i < compressed.size(); i++)
+        std::cout << compressed[i].start << '-' << compressed[i].end << std::endl;
+    }
+  }
+
+
+
+
 }
 
 //https://en.wikipedia.org/wiki/Sequence_alignment#CIGAR_Format
@@ -154,6 +197,7 @@ void batch_process(std::vector<SAMLine>& batch)
   // procs.push_back(debug_batch);
   procs.push_back(count_private_and_split_reads);
   procs.push_back(count_shared_reads);
+  procs.push_back(calc_akkermansia_coverage);
 
   for (int i = 0; i < procs.size(); i++)
     procs[i](batch);
@@ -212,5 +256,25 @@ void count_shared_reads(std::vector<SAMLine>& batch)
     for (int i = 0; i < batch.size(); i++)
       for (int j = 0; j < batch.size(); j++)
         shared2_reads[batch[i].rname][batch[j].rname] += 1.0f / (batch.size() * batch.size());
+  }
+}
+
+void calc_akkermansia_coverage(std::vector<SAMLine>& batch)
+{
+  for (int i = 0 ; i < batch.size(); i++)
+  {
+    for (int j = 0; j < batch.size(); j++)
+    {
+      SAMLine& samline_row = batch[i];
+      SAMLine& samline_col = batch[j];
+
+      //If its not akkermansia, we don't care for now
+      if (akkermansia_muciniphila.count(samline_row.rname) == 0 ||
+         akkermansia_muciniphila.count(samline_col.rname) == 0)
+         continue;
+
+      shared2_row_coverage[samline_row.rname][samline_col.rname].push_back(samline_row.reference_cover);
+      shared2_col_coverage[samline_row.rname][samline_col.rname].push_back(samline_col.reference_cover);
+    }
   }
 }
