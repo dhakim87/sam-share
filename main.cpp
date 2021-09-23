@@ -133,7 +133,7 @@ int main(int argc, char** argv)
 
       std::vector<IndexRange> compressed = compress_ranges(row_reads);
 
-      std::cout << rname1 << ',' << rname2 << compressed.size() / 2 << std::endl;
+      std::cout << rname1 << ',' << rname2 << ',' << compressed.size() << std::endl;
       for (int i = 0; i < compressed.size(); i++)
         std::cout << compressed[i].start << '-' << compressed[i].end << std::endl;
     }
