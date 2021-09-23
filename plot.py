@@ -5,6 +5,12 @@ import matplotlib.pyplot as plt
 
 import sqlite3
 import glob
+from collections import defaultdict
+from os.path import basename
+import pandas as pd
+from pandas.plotting import parallel_coordinates
+import math
+
 
 
 def build_priv_mat(gotus, counts_map):
@@ -108,6 +114,107 @@ def plot(gotu_data, title, gotus, names=None, **kwargs):
     plt.suptitle(title)
     plt.show()
 
+def akkermansia_parallel_plots(gotu_data_by_file):
+    akk_priv = defaultdict(list)
+    akk_split = defaultdict(list)
+    akk_total = defaultdict(list)
+    colors = []
+    akk_ids = [
+        # "G001683795",
+        # "G900097105",
+        "G000020225",
+        "G000723745",
+        "G000436395",
+        "G001917295",
+        # "G000437075",
+        # "G001647615",
+        # "G001578645",
+        # "G001580195",
+        "G001940945",
+        "G000980515"
+    ]
+    for fname in gotu_data_by_file:
+        first_part = basename(fname)[:7]
+        if first_part.startswith("Q.") or first_part.startswith("S."):
+            disease_status = 'g' if first_part[6] == '1' else 'r'
+            colors.append(disease_status)
+        else:
+            continue
+
+        privs = gotu_data_by_file[fname].gotu_to_priv
+        splits = gotu_data_by_file[fname].gotu_to_split
+        for gid in akk_ids:
+            if gid in privs:
+                priv = privs[gid]
+            else:
+                priv = 0
+            if gid in splits:
+                split = splits[gid]
+            else:
+                split = 0
+            total = priv + split
+            akk_priv[gid].append(priv)
+            akk_split[gid].append(split)
+            akk_total[gid].append(total)
+
+    akk_priv_angles = {}
+    for akk_id in akk_ids[1:]:
+        x = akk_priv[akk_ids[0]]
+        y = akk_priv[akk_id]
+        angles = []
+        for i in range(len(x)):
+            angle = math.degrees(math.atan2(y[i], x[i]))
+            angles.append(angle)
+        akk_priv_angles[akk_id] = angles
+
+    color_col = pd.Series(colors)
+    df_priv = pd.DataFrame.from_dict(akk_priv_angles)
+    df_priv["disease"] = color_col
+    # df_split = pd.DataFrame.from_dict(akk_split)
+    # df_split["disease"] = color_col
+    # df_total = pd.DataFrame.from_dict(akk_total)
+    # df_total["disease"] = color_col
+
+    print(df_priv)
+    parallel_coordinates(df_priv, class_column="disease")
+    plt.show()
+
+    # parallel_coordinates(df_split, class_column="disease")
+    # plt.show()
+    #
+    # parallel_coordinates(df_total, class_column="disease")
+    # plt.show()
+
+    clusters = []
+    for i in range(len(akk_priv[akk_ids[0]])):
+        if akk_total[akk_ids[0]][i] > akk_total[akk_ids[2]][i]:
+            clusters.append("r")
+        else:
+            clusters.append("b")
+
+    for akk_id in akk_ids[1:]:
+        plt.subplot(3, 1, 1)
+        plt.scatter(akk_priv[akk_ids[0]], akk_priv[akk_id], c=clusters)
+        plt.axis('equal')
+        plt.title('private reads')
+        plt.xlabel(akk_ids[0])
+        plt.ylabel(akk_id)
+
+        plt.subplot(3, 1, 2)
+        plt.scatter(akk_total[akk_ids[0]], akk_total[akk_id], c=clusters)
+        plt.axis('equal')
+        plt.title('split reads')
+        plt.xlabel(akk_ids[0])
+        plt.ylabel(akk_id)
+
+        plt.subplot(3, 1, 3)
+        plt.scatter(akk_total[akk_ids[0]], akk_total[akk_id], c=clusters)
+        plt.axis('equal')
+        plt.title('total reads')
+        plt.xlabel(akk_ids[0])
+        plt.ylabel(akk_id)
+        plt.show()
+
 
 def load_gotu_to_species():
     gotu_to_species = {}
@@ -206,11 +313,13 @@ def main(fnames):
 
     file_stats = []
     gotu_data = GOTUData()
+    gotu_data_by_file = {}
     for fname in fnames:
         i += 1
         if i % 10 == 0:
             print(i)
         gotu_data_from_file = load_gotu_data(fname)
+        gotu_data_by_file[fname] = gotu_data_from_file
 
         total_priv = sum(gotu_data_from_file.gotu_to_priv.values())
         total_split = sum(gotu_data_from_file.gotu_to_split.values())
@@ -229,6 +338,8 @@ def main(fnames):
         plt.xlabel("Percent Split Reads")
         plt.ylabel("# .sam files")
         plt.show()
+
+        akkermansia_parallel_plots(gotu_data_by_file)
 
     print("Data Loaded!")
 
@@ -266,7 +377,6 @@ def main(fnames):
     plt.ylabel("# Reference Genomes")
     plt.title("Split Ratio")
     plt.show()
-
 
     for precision in [1000, 10000, 100000, 1000000, 10000000]:
         plt.spy(mat_all, precision=precision, markersize=4)
@@ -511,7 +621,7 @@ def main(fnames):
 
 
 if __name__ == "__main__":
-    main(glob.glob("./merged_imsms.outsam"))
+    # main(glob.glob("./merged_imsms.outsam"))
     # main(glob.glob("./187samples_qiita11919.outsam"))
-    # main(glob.glob("./outsams_imsms/*.outsam"))
+    main(glob.glob("./outsams_imsms/*.outsam"))
     # main(glob.glob("./outsams_staph_aureus/*.outsam"))
