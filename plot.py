@@ -88,11 +88,20 @@ def plot(gotu_data, title, gotus, names=None, **kwargs):
         plt.imshow(mat_akk_cover, cmap='hot', interpolation='nearest', vmin=0, vmax=1)
         plt.title("Coverage")
 
+    if names is not None:
+        for i in range(len(names)):
+            priv = mat_akk_priv[i][0]
+            split = mat_akk_split[i][0]
+            shared_in_table = sum(mat_akk[i])
+            split_ratio = split / (priv + split)
+            in_table = shared_in_table / split
+            print(i, names[i], mat_akk_priv[i], mat_akk_split[i], sum(mat_akk[i]), "SPLIT:", split_ratio, "IN_TABLE:", in_table)
+
     plt.colorbar()
     plt.subplot(1, numplots, 1)
     plt.imshow(mat_akk, cmap='hot', interpolation='nearest', **kwargs)
-    # plt.spy(mat_akk, precision=1, markersize=4)
-    if names is not None:
+    # plt.spy(mat_akk, precision=100, markersize=4)
+    if names is not None and len(names) <= 50:
         plt.yticks(range(len(names)), names)
     plt.title("Share Matrix")
     plt.colorbar()
@@ -234,43 +243,145 @@ def main(fnames):
     print("Total Reads", total_priv + total_split)
     print("Percent Reads Split: ", total_split / (total_priv + total_split))
 
-    # gotu_data.set_coverage(gotu_to_coverage)
+    gotu_data.set_coverage(gotu_to_coverage)
 
     all_gotus = sorted(list(gotu_data.all_gotus_set), key=lambda x: gotu_to_species[x])
     gotu_names = [gotu_to_species[x] for x in all_gotus]
     for i in range(len(gotu_names)):
         print(i, gotu_names[i])
+
+    mat_all_priv = build_priv_mat(all_gotus, gotu_data.gotu_to_priv)
+    mat_all_split = build_priv_mat(all_gotus, gotu_data.gotu_to_split)
     mat_all = build_shared_mat(all_gotus, gotu_data.gotu_to_shared)
 
-    # for precision in [100, 1000, 10000, 100000, 1000000, 10000000, 100000000]:
-    #     plt.spy(mat_all, precision=precision, markersize=4)
-    #     # plt.colorbar()
-    #     plt.title("Share Matrix Val > " + str(precision))
-    #     plt.show()
+    gotu_split_data = []
+    for gotu in range(len(all_gotus)):
+        priv = mat_all_priv[gotu][0]
+        split = mat_all_split[gotu][0]
+        fraction_split = split / (priv + split)
+        gotu_split_data.append(fraction_split)
 
-    range_min = 850
+    plt.hist(gotu_split_data)
+    plt.xlabel("Fraction Of Reads Split Across Multiple Genomes")
+    plt.ylabel("# Reference Genomes")
+    plt.title("Split Ratio")
+    plt.show()
+
+
+    for precision in [1000, 10000, 100000, 1000000, 10000000]:
+        plt.spy(mat_all, precision=precision, markersize=4)
+        # plt.colorbar()
+        plt.title("Share Matrix Val > " + str(precision))
+        plt.show()
+
+    mat_1_in_10000 = []
+    mat_1_in_1000 = []
+    mat_1_in_100 = []
+    mat_1_in_10 = []
+    mat_all_row_normalized = []
+    for y in range(len(all_gotus)):
+        norm_row = []
+        row_total = mat_all_priv[y][0] + mat_all_split[y][0]
+        num_shared_1_in_10000 = 0
+        num_shared_1_in_1000 = 0
+        num_shared_1_in_100 = 0
+        num_shared_1_in_10 = 0
+        for x in range(len(all_gotus)):
+            if (all_gotus[x],all_gotus[y]) in gotu_data.gotu_to_shared:
+                val = gotu_data.gotu_to_shared[(all_gotus[x],all_gotus[y])]
+            else:
+                val = 0
+            norm_val = val / row_total
+            if norm_val > 0.0001:
+                num_shared_1_in_10000 += 1
+            if norm_val > 0.001:
+                num_shared_1_in_1000 += 1
+            if norm_val > 0.01:
+                num_shared_1_in_100 += 1
+            if norm_val > 0.1:
+                num_shared_1_in_10 += 1
+            norm_row.append(val / row_total)
+
+        mat_all_row_normalized.append(norm_row)
+        mat_1_in_10.append(num_shared_1_in_10)
+        mat_1_in_100.append(num_shared_1_in_100)
+        mat_1_in_1000.append(num_shared_1_in_1000)
+        mat_1_in_10000.append(num_shared_1_in_10000)
+
+    plt.hist(mat_1_in_10000)
+    plt.xlabel("Number of genomes sharing 1/10000 of reads")
+    plt.ylabel("# Reference Genomes")
+    plt.title("Identical Neighbors or Death By 10000 Cuts Read Bleed")
+    plt.show()
+
+    plt.hist(mat_1_in_1000)
+    plt.xlabel("Number of genomes sharing 1/1000 of reads")
+    plt.ylabel("# Reference Genomes")
+    plt.title("Identical Neighbors or Death By 1000 Cuts Read Bleed")
+    plt.show()
+
+    plt.hist(mat_1_in_100)
+    plt.xlabel("Number of genomes sharing 1/100 of reads")
+    plt.ylabel("# Reference Genomes")
+    plt.title("Identical Neighbors or Death By 100 Cuts Read Bleed")
+    plt.show()
+
+    plt.hist(mat_1_in_10)
+    plt.xlabel("Number of genomes sharing 1/10 of reads")
+    plt.ylabel("# Reference Genomes")
+    plt.title("Identical Neighbors or Death By 10 Cuts Read Bleed")
+    plt.show()
+
+
+    mat_all_row_normalized = np.array(mat_all_row_normalized)
+
+    plt.imshow(mat_all_row_normalized, cmap='hot', interpolation='nearest', vmin=0, vmax=0.0001)
+    plt.title("Read Fraction Clamped to 1/10000")
+    plt.show()
+    for precision in [0.0001, 0.001, 0.01, 0.1, 0.25]:
+        plt.spy(mat_all_row_normalized, precision=precision, markersize=4)
+        plt.title("Read Fraction > " + str(precision))
+        plt.show()
+
+    # bacteroides: 805-855
+    # clostridium: 1779-1897
+    # Faecalibacterium 2569-2572
+    range_min = 805
     range_max = 855
     precision = 100000
     mat_all = build_shared_mat(all_gotus, gotu_data.gotu_to_shared, gotus_y=all_gotus[range_min:range_max])
     plt.spy(mat_all, precision=precision, markersize=4, aspect='auto')
     plt.yticks(range(len(gotu_names[range_min:range_max])), gotu_names[range_min:range_max])
     print(mat_all.shape)
-    active_genus = ""
-    offset_index = 0
-    for r in range(3,4):
+    for r in range(mat_all.shape[0]):
+        offset_index = 0
+        active_genus = ""
         for c in range(mat_all.shape[1]):
+            if range_min <= c < range_max:
+                continue
             if mat_all[r,c] > precision:
                 gname = gotu_names[c]
                 if gname.split()[0] != active_genus:
-                    plt.annotate(gotu_names[c],
+                    rname = gotu_names[r + range_min]
+                    cname = gotu_names[c]
+                    rpriv = mat_all_priv[r + range_min][0]
+                    cpriv = mat_all_priv[c][0]
+                    rsplit = mat_all_split[r + range_min][0]
+                    csplit = mat_all_split[c][0]
+                    val = mat_all[r,c]
+
+                    pct_r_reads = val / (rpriv + rsplit)
+                    pct_c_reads = val / (cpriv + csplit)
+                    print(rname, cname, pct_r_reads, pct_c_reads)
+                    plt.annotate(gotu_names[c] + "\n" + "{:2.0f}".format(val) + "," + "{:2.0f}%".format(pct_r_reads*100) + "," + "{:2.0f}%".format(pct_c_reads*100),
                         xy=(c,r), xycoords='data',
-                        xytext=(0, [72, 60, 48, 36, 24, 12][offset_index]), textcoords='offset points',
+                        xytext=(0, [36, 24, 12][offset_index]), textcoords='offset points',
                         arrowprops=dict(arrowstyle="-", relpos=(0, 0)),
                         horizontalalignment='left',
                         verticalalignment='bottom',
                     )
                     active_genus = gname.split()[0]
-                    offset_index = (offset_index + 1) % 6
+                    offset_index = (offset_index + 1) % 3
 
     plt.subplots_adjust(left=0.2, right=0.9, top=0.9, bottom=0.1)
     plt.title("Share Matrix Val > " + str(precision))
@@ -315,7 +426,7 @@ def main(fnames):
         gotu_ratios.append((name, ratio, gotu, priv, split))
 
     gotu_ratios.sort(key=lambda x: x[3] + x[4], reverse=True)
-    ind = min(10, len(gotu_ratios))
+    ind = min(25, len(gotu_ratios))
     thresh_total = gotu_ratios[ind][3] + gotu_ratios[ind][4]
 
     # Show top 10 by total reads assigned
@@ -327,7 +438,7 @@ def main(fnames):
     plot(gotu_data, fname + "-Top GOTUs by Total Reads Assigned", [x[2] for x in most_confused], names=names)
 
 
-    print("Top 10 Species By Total Reads")
+    print("Top 25 Species By Total Reads")
     for x in gotu_ratios[:10]:
         print(x[0], x[3]+x[4])
 
@@ -349,7 +460,10 @@ def main(fnames):
     # Show gotus with ratio 0
     most_confused = [x for x in gotu_ratios if x[3] == 0]
     most_confused.sort(key=lambda x: x[0])
-    plot(gotu_data, fname + "-Most Confused (No private reads)", [x[2] for x in most_confused])
+    names = []
+    for i in range(len(most_confused)):
+        names.append(most_confused[i][0] + ": " + str(i))
+    plot(gotu_data, fname + "-Most Confused (No private reads)", [x[2] for x in most_confused], names=names)
 
     gotu_ratios.sort(key=lambda x: x[4], reverse=True)
     ind = min(25, len(gotu_ratios))
@@ -367,6 +481,7 @@ def main(fnames):
     # Show things that get confused with Yersinia Pestis
     # yersinia = [x for x in gotu_ratios if x[0] == "Yersinia pestis"]
     yersinia = [x for x in gotu_ratios if x[0] == "Staphylococcus aureus"]
+    # yersinia = [x for x in gotu_ratios if x[0] == "Bacteroidales bacterium K10"]
     yersinia_gotus = set([y[2] for y in yersinia])
     yersinia_counts = []
     for key in gotu_data.gotu_to_shared:
@@ -374,7 +489,7 @@ def main(fnames):
             yersinia_counts.append(gotu_data.gotu_to_shared[key])
 
     yersinia_counts.sort(reverse=True)
-    ind = min(50, len(yersinia_counts))
+    ind = min(50, len(yersinia_counts) - 1)
     yersinia_share_thresh = yersinia_counts[ind]
 
     yersinia_shared = set([])
@@ -391,11 +506,12 @@ def main(fnames):
     for i in range(len(most_confused)):
         names.append(most_confused[i][0] + ": " + str(i))
     # plot(gotu_data, "Confused With Yersinia pestis", [x[2] for x in most_confused], names=names, vmin=0, vmax=50000)
-    plot(gotu_data, "Confused With Staphylococcus aureus", [x[2] for x in most_confused], names=names, vmin=0, vmax=50000)
+    plot(gotu_data, "Confused With Staphylococcus aureus", [x[2] for x in most_confused], names=names)
+    # plot(gotu_data, "Confused With Bacteroidales bacterium K10", [x[2] for x in most_confused], names=names)
 
 
 if __name__ == "__main__":
-    main(glob.glob("./imsms_all.outsam"))
+    main(glob.glob("./merged_imsms.outsam"))
     # main(glob.glob("./187samples_qiita11919.outsam"))
-    # main(glob.glob("./outsams/*.outsam"))
+    # main(glob.glob("./outsams_imsms/*.outsam"))
     # main(glob.glob("./outsams_staph_aureus/*.outsam"))
