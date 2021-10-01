@@ -21,23 +21,23 @@ static std::map<std::string, float> split_reads;  //This could easily use fixed 
 static std::map<std::string, std::map<std::string, float> > shared2_reads;
 
 static std::map<std::string, std::map<std::string, std::vector<IndexRange> > > shared2_row_coverage;
-static std::map<std::string, std::map<std::string, std::vector<IndexRange> > > shared2_col_coverage;
+static std::map<std::string, std::map<std::string, std::vector<IndexRange> > > shared_powerset_row_coverage;
 
 static std::vector<std::string> akkermansia_muciniphila_list;
 static std::unordered_set<std::string> akkermansia_muciniphila;
 
 static void init_akkermansia_lists()
 {
-    // akkermansia_muciniphila_list.push_back("G001683795");
-    // akkermansia_muciniphila_list.push_back("G900097105");
+    akkermansia_muciniphila_list.push_back("G001683795");
+    akkermansia_muciniphila_list.push_back("G900097105");
     akkermansia_muciniphila_list.push_back("G000020225");
     akkermansia_muciniphila_list.push_back("G000723745");
     akkermansia_muciniphila_list.push_back("G000436395");
     akkermansia_muciniphila_list.push_back("G001917295");
-    // akkermansia_muciniphila_list.push_back("G000437075");
-    // akkermansia_muciniphila_list.push_back("G001647615");
-    // akkermansia_muciniphila_list.push_back("G001578645");
-    // akkermansia_muciniphila_list.push_back("G001580195");
+    akkermansia_muciniphila_list.push_back("G000437075");
+    akkermansia_muciniphila_list.push_back("G001647615");
+    akkermansia_muciniphila_list.push_back("G001578645");
+    akkermansia_muciniphila_list.push_back("G001580195");
     akkermansia_muciniphila_list.push_back("G001940945");
     akkermansia_muciniphila_list.push_back("G000980515");
     for (int i = 0; i < akkermansia_muciniphila_list.size(); i++)
@@ -122,8 +122,11 @@ int main(int argc, char** argv)
     }
   }
 
+//  std::map<std::string, std::map<std::string, std::vector<IndexRange> > >& to_write = shared2_row_coverage;
+  std::map<std::string, std::map<std::string, std::vector<IndexRange> > >& to_write = shared_powerset_row_coverage;
+
   std::cout << "---" << std::endl;
-  for (std::map<std::string, std::map<std::string, std::vector<IndexRange> > >::iterator shared2_it = shared2_row_coverage.begin(); shared2_it != shared2_row_coverage.end(); shared2_it++)
+  for (std::map<std::string, std::map<std::string, std::vector<IndexRange> > >::iterator shared2_it = to_write.begin(); shared2_it != to_write.end(); shared2_it++)
   {
     const std::string& rname1 = shared2_it->first;
     for (std::map<std::string, std::vector<IndexRange> >::iterator shared2_it2 = shared2_it->second.begin(); shared2_it2 != shared2_it->second.end(); shared2_it2++)
@@ -138,10 +141,6 @@ int main(int argc, char** argv)
         std::cout << compressed[i].start << '-' << compressed[i].end << std::endl;
     }
   }
-
-
-
-
 }
 
 //https://en.wikipedia.org/wiki/Sequence_alignment#CIGAR_Format
@@ -197,7 +196,8 @@ void batch_process(std::vector<SAMLine>& batch)
   // procs.push_back(debug_batch);
   procs.push_back(count_private_and_split_reads);
   procs.push_back(count_shared_reads);
-  procs.push_back(calc_akkermansia_coverage);
+//  procs.push_back(calc_akkermansia_coverage);
+  procs.push_back(calc_akkermansia_coverage_powerset);
 
   for (int i = 0; i < procs.size(); i++)
     procs[i](batch);
@@ -274,7 +274,41 @@ void calc_akkermansia_coverage(std::vector<SAMLine>& batch)
          continue;
 
       shared2_row_coverage[samline_row.rname][samline_col.rname].push_back(samline_row.reference_cover);
-      shared2_col_coverage[samline_row.rname][samline_col.rname].push_back(samline_col.reference_cover);
     }
+  }
+}
+
+void calc_akkermansia_coverage_powerset(std::vector<SAMLine>& batch)
+{
+  std::set<std::string> set;
+  for (int i = 0; i < batch.size(); i++)
+  {
+    SAMLine& samline_row = batch[i];
+    //If its not akkermansia, we don't care for now
+    if (akkermansia_muciniphila.count(samline_row.rname) == 0)
+      continue;
+    set.insert(batch[i].rname);
+  }
+
+  std::vector<std::string> sorted_set(set.begin(), set.end());
+  std::sort(sorted_set.begin(), sorted_set.end());
+
+  std::ostringstream outstream;
+  for (int i = 0; i < sorted_set.size(); i++)
+  {
+    outstream << sorted_set[i];
+    if (i < sorted_set.size() - 1)
+      outstream << ";";
+  }
+  std::string setname = outstream.str();
+
+  for (int i = 0; i < batch.size(); i++)
+  {
+    SAMLine& samline_row = batch[i];
+    //If its not akkermansia, we don't care for now
+    if (akkermansia_muciniphila.count(samline_row.rname) == 0)
+      continue;
+
+    shared_powerset_row_coverage[samline_row.rname][setname].push_back(samline_row.reference_cover);
   }
 }

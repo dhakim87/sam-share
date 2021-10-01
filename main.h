@@ -22,6 +22,7 @@ void debug_batch(std::vector<SAMLine>&);
 void count_private_and_split_reads(std::vector<SAMLine>&);
 void count_shared_reads(std::vector<SAMLine>&);
 void calc_akkermansia_coverage(std::vector<SAMLine>&);
+void calc_akkermansia_coverage_powerset(std::vector<SAMLine>&);
 
 bool compare_range_starts(IndexRange i,IndexRange j) { return (i.start<j.start); }
 //https://github.com/ucsd-cmi/zebra_filter/blob/master/cover.py
