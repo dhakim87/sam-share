@@ -1,5 +1,7 @@
 import numpy as np
 import matplotlib
+from numpy.linalg import LinAlgError
+
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 
@@ -56,7 +58,31 @@ def build_shared_mat(gotus, counts_map, gotus_x=None, gotus_y=None):
     return mat
 
 
-def build_overlap_mat(gotus, overlap_map, length_map, gotus_x=None, gotus_y=None):
+def build_overlap_mat_2D(gotus, overlap_map, length_map, gotus_x=None, gotus_y=None):
+    mat_all = []
+    if gotus_x is None:
+        gotus_x = gotus
+    if gotus_y is None:
+        gotus_y = gotus
+
+    for gotu1 in gotus_y:
+        row = []
+        for gotu2 in gotus_x:
+            if (gotu1, gotu2) in overlap_map:
+                gotu1_ranges = overlap_map[(gotu1, gotu2)]
+                gotu1_length = length_map[gotu1]
+                total_len = 0
+                for r in gotu1_ranges:
+                    total_len += r[1] - r[0] + 1
+                frac_len = total_len / gotu1_length
+                row.append(frac_len)
+            else:
+                row.append(0)
+        mat_all.append(row)
+    mat = np.array(mat_all)
+    return mat
+
+def build_overlap_mat_powerset(gotus, overlap_map, length_map, gotus_x=None, gotus_y=None):
     mat_all = []
     if gotus_x is None:
         gotus_x = gotus
@@ -103,16 +129,15 @@ def calc_distribution_2D(source_index, overlap):
 
 
 def calc_distribution_powerset(source_index, overlap):
-
     # rows should sum to 1.
     overlap[source_index,:] /= sum(overlap[source_index,:])
     # print("BUT WHY!?")
 
     sums = [0] * overlap.shape[0]
     all_sets = list(powerset(range(overlap.shape[0])))
-    print(all_sets)
-    print(overlap[source_index,:])
-    print(sum(overlap[source_index,:]))
+    # print(all_sets)
+    # print(overlap[source_index,:])
+    # print(sum(overlap[source_index,:]))
     source_set_index = all_sets.index((source_index,))
 
     for j in range(overlap.shape[1]):
@@ -123,9 +148,6 @@ def calc_distribution_powerset(source_index, overlap):
         for ind in s:
             sums[ind] += p * 1 / len(s)
     return sums
-
-
-
 
 
 class GOTUData:
@@ -230,7 +252,7 @@ def plot(gotu_data, title, gotus, names=None, **kwargs):
 
 
 def plot_MOM(gotu_data, title, gotus, names=None):
-    mat_akk_overlap = build_overlap_mat(gotus, gotu_data.gotu_to_overlap, gotu_data.gotu_to_length)
+    mat_akk_overlap = build_overlap_mat_powerset(gotus, gotu_data.gotu_to_overlap, gotu_data.gotu_to_length)
     print(mat_akk_overlap)
     plt.imshow(mat_akk_overlap, cmap='hot', interpolation='nearest')
     if names is not None and len(names) <= 50:
@@ -275,6 +297,7 @@ def akkermansia_parallel_plots(gotu_data_by_file, merged_gotu_data):
 
         privs = gotu_data_by_file[fname].gotu_to_priv
         splits = gotu_data_by_file[fname].gotu_to_split
+        shareds = gotu_data_by_file[fname].gotu_to_shared
         for gid in akk_ids:
             if gid in privs:
                 priv = privs[gid]
@@ -284,7 +307,12 @@ def akkermansia_parallel_plots(gotu_data_by_file, merged_gotu_data):
                 split = splits[gid]
             else:
                 split = 0
-            total = priv + split
+            total_share = 0
+            for (g1, g2) in shareds:
+                if g1 == gid:
+                    total_share += shareds[(g1,g2)]
+
+            total = priv + total_share
             akk_priv[gid].append(priv)
             akk_split[gid].append(split)
             akk_total[gid].append(total)
@@ -326,23 +354,39 @@ def akkermansia_parallel_plots(gotu_data_by_file, merged_gotu_data):
         max_index = akk_priv_counts.index(max_priv)
         clusters.append(mpl_colors[max_index])
 
-    mat_akk_overlap = build_overlap_mat(akk_ids, merged_gotu_data.gotu_to_overlap, merged_gotu_data.gotu_to_length)
+    mat_akk_overlap = build_overlap_mat_powerset(akk_ids, merged_gotu_data.gotu_to_overlap, merged_gotu_data.gotu_to_length)
 
+    print(mat_akk_overlap)
     # akk_lines = [calc_distribution_2D(i, mat_akk_overlap) for i in range(len(akk_ids))]
     akk_lines = [calc_distribution_powerset(i, mat_akk_overlap) for i in range(len(akk_ids))]
     for line in akk_lines:
         print(line)
         print(sum(line))
 
+    mom = np.array(akk_lines)
+    print(mom)
+
+    try:
+        mom_inv = np.linalg.inv(mom)
+        print("Inverted!")
+        print(mom_inv)
+    except LinAlgError as e:
+        print("Couldn't invert, oops")
+        mom_inv = None
+
     vectors = [np.array(line) for line in akk_lines]
     vectors = [v / np.linalg.norm(v) for v in vectors]
 
     residuals = []
+    corrected_points = []
     scaled_residuals = []
     all_scaled_residuals = []
     for sample_id in range(len(akk_priv[akk_ids[0]])):
         sample_point = [akk_total[akk_ids[i]][sample_id] for i in range(len(akk_ids))]
         sample_point = np.array(sample_point)
+        if mom_inv is not None:
+            corrected_point = np.matmul(mom_inv, sample_point)
+            corrected_points.append(corrected_point)
         min_index = 0
         min_dist = 999999999
         for index in range(len(vectors)):
@@ -373,24 +417,25 @@ def akkermansia_parallel_plots(gotu_data_by_file, merged_gotu_data):
     plt.title("Sample residuals scaled - Only 1 Akkermansia")
     plt.show()
 
+    corrected_points = np.array(corrected_points)
     for i in range(len(akk_ids)):
         for j in range(i + 1, len(akk_ids)):
-            plt.subplot(3, 1, 1)
+            plt.subplot(2, 2, 1)
             plt.scatter(akk_priv[akk_ids[i]], akk_priv[akk_ids[j]], c=clusters)
             plt.axis('equal')
             plt.title('private reads')
             plt.xlabel(akk_ids[i])
             plt.ylabel(akk_ids[j])
 
-            plt.subplot(3, 1, 2)
+            plt.subplot(2, 2, 2)
             plt.scatter(akk_split[akk_ids[i]], akk_split[akk_ids[j]], c=clusters)
             plt.axis('equal')
             plt.title('split reads')
             plt.xlabel(akk_ids[i])
             plt.ylabel(akk_ids[j])
 
-            plt.subplot(3, 1, 3)
-            plt.scatter(akk_total[akk_ids[i]], akk_total[akk_ids[j]], c=all_scaled_residuals, cmap='seismic')
+            plt.subplot(2, 2, 3)
+            plt.scatter(akk_total[akk_ids[i]], akk_total[akk_ids[j]], c=clusters)
             maxx = max(akk_total[akk_ids[i]])
             maxy = max(akk_total[akk_ids[j]])
             for line_index in range(len(akk_lines)):
@@ -406,6 +451,14 @@ def akkermansia_parallel_plots(gotu_data_by_file, merged_gotu_data):
 
             plt.axis('equal')
             plt.title('total reads')
+            plt.xlabel(akk_ids[i])
+            plt.ylabel(akk_ids[j])
+            plt.legend()
+
+            plt.subplot(2, 2, 4)
+            plt.scatter(corrected_points[:,i], corrected_points[:,j], c=clusters)
+            plt.axis('equal')
+            plt.title('corrected')
             plt.xlabel(akk_ids[i])
             plt.ylabel(akk_ids[j])
             plt.legend()
@@ -702,8 +755,8 @@ def main(fnames):
     # clostridium: 1779-1897
     # Faecalibacterium 2569-2572
     # Cronobacter sakazakii 2107-2108
-    range_min = 1779
-    range_max = 1897
+    range_min = 805
+    range_max = 855
     precision = 100000
     mat_all = build_shared_mat(all_gotus, gotu_data.gotu_to_shared, gotus_y=all_gotus[range_min:range_max])
     plt.spy(mat_all, precision=precision, markersize=4, aspect='auto')
@@ -749,7 +802,7 @@ def main(fnames):
     c.execute("select distinct genus from genome order by genus")
     genera = [r[0] for r in c.fetchall()]
     for genus in genera:
-        if genus not in ["Akkermansia"]:
+        if genus not in ["Bacteroides"]:
             continue
         c.execute("select genome_id, species from genome where genus = ? order by species", (genus,))
         rows = c.fetchall()
@@ -763,7 +816,7 @@ def main(fnames):
         else:
             title = genus
         plot(gotu_data, title, genus_gotus, names=[gotu_to_species[g] for g in genus_gotus])
-        plot_MOM(gotu_data, title + "- Overlap", genus_gotus, names=[gotu_to_species[g] for g in genus_gotus])
+        # plot_MOM(gotu_data, title + "- Overlap", genus_gotus, names=[gotu_to_species[g] for g in genus_gotus])
 
     conn.close()
 
@@ -836,8 +889,8 @@ def main(fnames):
     plot(gotu_data, fname + "-Most Confused By Split Count", [x[2] for x in most_confused], names=names)
 
     # Show things that get confused with Yersinia Pestis
-    # yersinia = [x for x in gotu_ratios if x[0] == "Yersinia pestis"]
-    yersinia = [x for x in gotu_ratios if x[0] == "Staphylococcus aureus"]
+    yersinia = [x for x in gotu_ratios if x[0] == "Yersinia pestis"]
+    # yersinia = [x for x in gotu_ratios if x[0] == "Staphylococcus aureus"]
     # yersinia = [x for x in gotu_ratios if x[0] == "Bacteroidales bacterium K10"]
     yersinia_gotus = set([y[2] for y in yersinia])
     yersinia_counts = []
@@ -862,15 +915,15 @@ def main(fnames):
     names = []
     for i in range(len(most_confused)):
         names.append(most_confused[i][0] + ": " + str(i))
-    # plot(gotu_data, "Confused With Yersinia pestis", [x[2] for x in most_confused], names=names, vmin=0, vmax=50000)
-    plot(gotu_data, "Confused With Staphylococcus aureus", [x[2] for x in most_confused], names=names)
+    plot(gotu_data, "Confused With Yersinia pestis", [x[2] for x in most_confused], names=names, vmin=0, vmax=50000)
+    # plot(gotu_data, "Confused With Staphylococcus aureus", [x[2] for x in most_confused], names=names)
     # plot(gotu_data, "Confused With Bacteroidales bacterium K10", [x[2] for x in most_confused], names=names)
 
 
 if __name__ == "__main__":
-    # main(glob.glob("./merged_imsms.outsam"))
-    # main(glob.glob("./outsams_akkermansia_coverage/*.outsam")[:500])
-    main(glob.glob("./outsams_akkermansia_powerset_coverage/*.outsam")[:500])
+    main(glob.glob("./merged_imsms.outsam"))
+    # main(glob.glob("./outsams_akkermansia_coverage/*.outsam")[:100])
+    # main(glob.glob("./outsams_akkermansia_powerset_coverage/*.outsam")[:100])
     # main(glob.glob("./187samples_qiita11919.outsam"))
     # main(glob.glob("./outsams_imsms/*.outsam"))
     # main(glob.glob("./outsams_staph_aureus/*.outsam"))
