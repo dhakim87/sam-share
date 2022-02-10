@@ -408,11 +408,11 @@ void track_yersinia_reads(std::vector<SAMLine>& batch)
     //If its not yersinia, we don't care
     if (yersinia.count(samline_row.rname) == 0)
        continue;
-    found_yersinia = true
+    found_yersinia = true;
   }
 
   if (!found_yersinia)
-    return
+    return;
 
   bool found_ecoli = false;
   bool found_klebsiella = false;
