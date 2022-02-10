@@ -26,6 +26,21 @@ static std::map<std::string, std::map<std::string, std::vector<IndexRange> > > s
 static std::vector<std::string> akkermansia_muciniphila_list;
 static std::unordered_set<std::string> akkermansia_muciniphila;
 
+static std::vector<std::string> yersinia_list;
+static std::unordered_set<std::string> yersinia;
+
+static std::vector<std::string> escherichia_list;
+static std::unordered_set<std::string> escherichia;
+
+static std::vector<std::string> klebsiella_list;
+static std::unordered_set<std::string> klebsiella;
+
+static long total_yersinia_reads = 0;
+static long yersinia_escherichia_reads = 0;
+static long yersinia_klebsiella_reads = 0;
+static long yersinia_only_reads = 0;
+static long yersinia_escherichia_and_klebsiella_reads = 0;
+
 static void init_akkermansia_lists()
 {
     akkermansia_muciniphila_list.push_back("G001683795");
@@ -44,9 +59,76 @@ static void init_akkermansia_lists()
         akkermansia_muciniphila.insert(akkermansia_muciniphila_list[i]);
 }
 
+static void init_yersinia_lists()
+{
+    yersinia_list.push_back("G000009065");
+    yersinia_list.push_back("G000009345");
+    yersinia_list.push_back("G000168835");
+    yersinia_list.push_back("G000169655");
+    yersinia_list.push_back("G000253175");
+    yersinia_list.push_back("G000320465");
+    yersinia_list.push_back("G000323285");
+    yersinia_list.push_back("G000323565");
+    yersinia_list.push_back("G000323585");
+    yersinia_list.push_back("G000323645");
+    yersinia_list.push_back("G000323725");
+    yersinia_list.push_back("G000323785");
+    yersinia_list.push_back("G000323825");
+    yersinia_list.push_back("G000324005");
+    yersinia_list.push_back("G000324145");
+    yersinia_list.push_back("G000324265");
+    yersinia_list.push_back("G000324305");
+    yersinia_list.push_back("G000324445");
+    yersinia_list.push_back("G000324485");
+    yersinia_list.push_back("G000324505");
+    yersinia_list.push_back("G000324625");
+    yersinia_list.push_back("G000324685");
+    yersinia_list.push_back("G000324725");
+    yersinia_list.push_back("G000324905");
+    yersinia_list.push_back("G000324985");
+    yersinia_list.push_back("G000325085");
+    yersinia_list.push_back("G000325145");
+    yersinia_list.push_back("G000325165");
+    yersinia_list.push_back("G000325245");
+    yersinia_list.push_back("G000325265");
+    yersinia_list.push_back("G000325285");
+    yersinia_list.push_back("G000964565");
+    yersinia_list.push_back("G001122605");
+    for (int i = 0; i < yersinia_list.size(); i++)
+        yersinia.insert(yersinia_list[i]);
+
+}
+
+static void init_ecoli_lists()
+{
+    escherichia_list.push_back("G000008865");
+    escherichia_list.push_back("G000026325");
+    escherichia_list.push_back("G000026345");
+    escherichia_list.push_back("G000183345");
+    escherichia_list.push_back("G000299455");
+    escherichia_list.push_back("G000759795");
+    escherichia_list.push_back("G001283625");
+    for (int i = 0; i < escherichia_list.size(); i++)
+        escherichia.insert(escherichia_list[i]);
+}
+
+static void init_klebsiella_lists()
+{
+    klebsiella_list.push_back("G000215745");
+    klebsiella_list.push_back("G000240185");
+    klebsiella_list.push_back("G001022195");
+    klebsiella_list.push_back("G001187865");
+    klebsiella_list.push_back("G001887595");
+    for (int i = 0; i < klebsiella_list.size(); i++)
+        klebsiella.insert(klebsiella_list[i]);
+}
+
 int main(int argc, char** argv)
 {
   init_akkermansia_lists();
+  init_ecoli_lists();
+  init_yersinia_lists();
+  init_klebsiella_lists();
   std::vector<SAMLine> batch;
   std::string last_qname;
   std::string line;
@@ -141,6 +223,10 @@ int main(int argc, char** argv)
         std::cout << compressed[i].start << '-' << compressed[i].end << std::endl;
     }
   }
+
+  std::cout << "---" << std::endl;
+  std::cout << "TotalYersinia" << "," << "PrivateYersinia" << "," << "YersiniaEscherichia" << "," << "YersiniaKlebsiella" << "," << "YersiniaEscherichiaKlebsiella" << std::endl;
+  std::cout << total_yersinia_reads << "," << yersinia_only_reads << "," << yersinia_escherichia_reads << "," << yersinia_klebsiella_reads << "," << yersinia_escherichia_and_klebsiella_reads << std::endl;
 }
 
 //https://en.wikipedia.org/wiki/Sequence_alignment#CIGAR_Format
@@ -183,8 +269,6 @@ void parse_cigar(std::string cigar, int& read_len, int& reference_len)
         break;
     }
   }
-
-
 }
 
 void batch_process(std::vector<SAMLine>& batch)
@@ -194,10 +278,11 @@ void batch_process(std::vector<SAMLine>& batch)
 
   std::vector<batch_processor*> procs;
   // procs.push_back(debug_batch);
-  procs.push_back(count_private_and_split_reads);
-  procs.push_back(count_shared_reads);
-//  procs.push_back(calc_akkermansia_coverage);
-  procs.push_back(calc_akkermansia_coverage_powerset);
+  // procs.push_back(count_private_and_split_reads);
+  // procs.push_back(count_shared_reads);
+  // procs.push_back(calc_akkermansia_coverage);
+  // procs.push_back(calc_akkermansia_coverage_powerset);
+  procs.push_back(track_yersinia_reads);
 
   for (int i = 0; i < procs.size(); i++)
     procs[i](batch);
@@ -311,4 +396,44 @@ void calc_akkermansia_coverage_powerset(std::vector<SAMLine>& batch)
 
     shared_powerset_row_coverage[samline_row.rname][setname].push_back(samline_row.reference_cover);
   }
+}
+
+void track_yersinia_reads(std::vector<SAMLine>& batch)
+{
+  bool found_yersinia = false;
+  for (int i = 0 ; i < batch.size(); i++)
+  {
+    SAMLine& samline_row = batch[i];
+
+    //If its not yersinia, we don't care
+    if (yersinia.count(samline_row.rname) == 0)
+       continue;
+    found_yersinia = true
+  }
+
+  if (!found_yersinia)
+    return
+
+  bool found_ecoli = false;
+  bool found_klebsiella = false;
+
+  for (int i = 0 ; i < batch.size(); i++)
+  {
+    SAMLine& samline_row = batch[i];
+
+    if (escherichia.count(samline_row.rname) != 0)
+        found_ecoli = true;
+    if (klebsiella.count(samline_row.rname) != 0)
+        found_klebsiella = true;
+  }
+
+  total_yersinia_reads++;
+  if (found_ecoli && found_klebsiella)
+      yersinia_escherichia_and_klebsiella_reads++;
+  else if (found_ecoli && !found_klebsiella)
+      yersinia_escherichia_reads++;
+  else if (!found_ecoli && found_klebsiella)
+      yersinia_klebsiella_reads++;
+  else if (!found_ecoli && !found_klebsiella)
+      yersinia_only_reads++;
 }
