@@ -35,11 +35,25 @@ static std::unordered_set<std::string> escherichia;
 static std::vector<std::string> klebsiella_list;
 static std::unordered_set<std::string> klebsiella;
 
+//Bacillus lists
+static std::vector<std::string> b_anthracis_list;
+static std::unordered_set<std::string> b_anthracis;
+static std::vector<std::string> b_cereus_list;
+static std::unordered_set<std::string> b_cereus;
+static std::vector<std::string> b_thuringiensis_list;
+static std::unordered_set<std::string> b_thuringiensis;
+
 static long total_yersinia_reads = 0;
 static long yersinia_escherichia_reads = 0;
 static long yersinia_klebsiella_reads = 0;
 static long yersinia_only_reads = 0;
 static long yersinia_escherichia_and_klebsiella_reads = 0;
+
+static long total_anthracis_reads = 0;
+static long anthracis_cereus_reads = 0;
+static long anthracis_thuringiensis_reads = 0;
+static long anthracis_only_reads = 0;
+static long anthracis_cereus_and_thuringiensis_reads = 0;
 
 static void init_akkermansia_lists()
 {
@@ -123,12 +137,31 @@ static void init_klebsiella_lists()
         klebsiella.insert(klebsiella_list[i]);
 }
 
+static void init_bacillus_lists()
+{
+    b_anthracis_list.push_back("G000007845");
+    b_anthracis_list.push_back("G000008165");
+    for (int i = 0; i < b_anthracis_list.size(); i++)
+        b_anthracis.insert(b_anthracis_list[i]);
+
+    b_cereus_list.push_back("G000007825");
+    b_cereus_list.push_back("G000291295");
+    for (int i = 0; i < b_cereus_list.size(); i++)
+        b_cereus.insert(b_cereus_list[i]);
+
+    b_thuringiensis_list.push_back("G000008505");
+    b_thuringiensis_list.push_back("G001420855");
+    for (int i = 0; i < b_thuringiensis_list.size(); i++)
+        b_thuringiensis.insert(b_thuringiensis_list[i]);
+}
+
 int main(int argc, char** argv)
 {
   init_akkermansia_lists();
   init_ecoli_lists();
   init_yersinia_lists();
   init_klebsiella_lists();
+  init_bacillus_lists();
   std::vector<SAMLine> batch;
   std::string last_qname;
   std::string line;
@@ -227,6 +260,9 @@ int main(int argc, char** argv)
   std::cout << "---" << std::endl;
   std::cout << "TotalYersinia" << "," << "PrivateYersinia" << "," << "YersiniaEscherichia" << "," << "YersiniaKlebsiella" << "," << "YersiniaEscherichiaKlebsiella" << std::endl;
   std::cout << total_yersinia_reads << "," << yersinia_only_reads << "," << yersinia_escherichia_reads << "," << yersinia_klebsiella_reads << "," << yersinia_escherichia_and_klebsiella_reads << std::endl;
+  std::cout << "---" << std::endl;
+  std::cout << "TotalAnthracis" << "," << "PrivateAnthracis" << "," << "AnthracisCereus" << "," << "AnthracisThuringiensis" << "," << "AnthracisCereusThuringiensis" << std::endl;
+  std::cout << total_anthracis_reads << "," << anthracis_only_reads << "," << anthracis_cereus_reads << "," << anthracis_thuringiensis_reads << "," << anthracis_cereus_and_thuringiensis_reads << std::endl;
 }
 
 //https://en.wikipedia.org/wiki/Sequence_alignment#CIGAR_Format
@@ -282,7 +318,8 @@ void batch_process(std::vector<SAMLine>& batch)
   // procs.push_back(count_shared_reads);
   // procs.push_back(calc_akkermansia_coverage);
   // procs.push_back(calc_akkermansia_coverage_powerset);
-  procs.push_back(track_yersinia_reads);
+  // procs.push_back(track_yersinia_reads);
+  procs.push_back(track_bacillus_reads);
 
   for (int i = 0; i < procs.size(); i++)
     procs[i](batch);
@@ -436,4 +473,44 @@ void track_yersinia_reads(std::vector<SAMLine>& batch)
       yersinia_klebsiella_reads++;
   else if (!found_ecoli && !found_klebsiella)
       yersinia_only_reads++;
+}
+
+void track_bacillus_reads(std::vector<SAMLine>& batch)
+{
+  bool found_anthracis = false;
+  for (int i = 0 ; i < batch.size(); i++)
+  {
+    SAMLine& samline_row = batch[i];
+
+    //If its not anthrax, we don't care
+    if (b_anthracis.count(samline_row.rname) == 0)
+       continue;
+    found_anthracis = true;
+  }
+
+  if (!found_anthracis)
+    return;
+
+  bool found_cereus = false;
+  bool found_thuringiensis = false;
+
+  for (int i = 0 ; i < batch.size(); i++)
+  {
+    SAMLine& samline_row = batch[i];
+
+    if (b_cereus.count(samline_row.rname) != 0)
+        found_cereus = true;
+    if (b_thuringiensis.count(samline_row.rname) != 0)
+        found_thuringiensis = true;
+  }
+
+  total_anthracis_reads++;
+  if (found_cereus && found_thuringiensis)
+      anthracis_cereus_and_thuringiensis_reads++;
+  else if (found_cereus && !found_thuringiensis)
+      anthracis_cereus_reads++;
+  else if (!found_cereus && found_thuringiensis)
+      anthracis_thuringiensis_reads++;
+  else if (!found_cereus && !found_thuringiensis)
+      anthracis_only_reads++;
 }
